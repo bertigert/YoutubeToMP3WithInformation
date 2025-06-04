@@ -11,7 +11,6 @@ This tool is intended for mass downloading mp3s from YouTube, adding tags to the
     ```
     MainFolder
     │   .gitignore
-    │   EVERY FILE IN THIS FOLDER GETS DELETED
     │   main.py
     │   README.md
     │   songs.csv
