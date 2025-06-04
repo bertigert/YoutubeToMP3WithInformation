@@ -4,7 +4,7 @@ This tool is intended for mass downloading mp3s from YouTube, adding tags to the
 0. Wipes the temp folder
 1. Reads the songs from songs.csv
     - They must have the link, should at least have the song/album title and the artist name
-2. Downloads the MP3s and thumbnails from YouTube
+2. Downloads the MP3s and thumbnails from YouTube using **yt-dlp** cli
 3. Adds the thumbnails and song information to the mp3 tags
     - Thumbnails are always cut to 720x720
 4. Structures the files like this
@@ -34,6 +34,11 @@ This tool is intended for mass downloading mp3s from YouTube, adding tags to the
             ├───...
             ...        
     ```
+
+## Requirements
+- yt-dlp.exe in PATH or in the same folder
+- probably some python packages, idk
+
 
 ### Note
 > This tool was originally intended for easy import into the Deezer streaming service. That's where the cover size limitation comes from.
