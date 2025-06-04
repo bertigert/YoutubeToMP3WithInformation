@@ -19,7 +19,7 @@ def download_audio_and_thumbnail(url, output_dir):
         "--extract-audio",
         "--audio-format", "mp3",
         "--audio-quality", "0",
-        "-o", os.path.join(output_dir, "%(title)s.%(ext)s"),
+        "-o", sanitize_filename(os.path.join(output_dir, "%(title)s.%(ext)s")),
         url
     ]
     subprocess.run(command, check=True)
@@ -123,8 +123,8 @@ def main():
     with open(csv_file_path, newline='', encoding='utf-8') as csvfile:
         reader = list(csv.DictReader(csvfile, delimiter=',', quotechar='"'))
     
-    clear_temp_folder(output_dir)
     for row in reader:
+        clear_temp_folder(output_dir)
         url = row['link'].strip()
         album = row['album_title'].strip()
         song_title = row['song_title'].strip()
