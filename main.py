@@ -6,11 +6,35 @@ from mutagen.id3 import ID3, APIC
 import json
 import shutil
 import csv
+import re
 
 def sanitize_filename(name):
-    return "".join(c for c in name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+    return "".join(c for c in name if c not in '<>:"/\\|?*').strip()
 
-def download_audio_and_thumbnail(url, output_dir):
+def parse_time_range(range_str):
+    if not range_str:
+        return None
+    s = range_str.strip()
+    try:
+        start_str, end_str = s.split('-', 1)
+        # allow numeric input; drop fractional part if provided
+        start_s = int(float(start_str))
+        end_s = int(float(end_str))
+    except Exception:
+        raise ValueError(f"Invalid time range format: {s}. Expected seconds-seconds (integers)")
+
+    if end_s <= start_s:
+        raise ValueError(f"End time must be greater than start time: {s}")
+
+    def sec_to_hms(sec):
+        hh = sec // 3600
+        mm = (sec % 3600) // 60
+        ss = sec % 60
+        return f"{hh:02}:{mm:02}:{ss:02}"
+
+    return f"{sec_to_hms(start_s)}-{sec_to_hms(end_s)}"
+
+def download_audio_and_thumbnail(url, output_dir, artist, album, song_title, time_range=None):
     command = [
         "yt-dlp",
         "-f", "bestaudio",
@@ -19,31 +43,34 @@ def download_audio_and_thumbnail(url, output_dir):
         "--extract-audio",
         "--audio-format", "mp3",
         "--audio-quality", "0",
-        "-o", sanitize_filename(os.path.join(output_dir, "%(title)s.%(ext)s")),
+    ]
+
+    if time_range:
+        norm = parse_time_range(time_range)
+        print(f"Downloading only section: {norm}")
+        command += ["--download-sections", f"*{norm}"]
+
+    command += [
+        "-o", os.path.join(output_dir, "downloaded.%(ext)s"),
         url
     ]
     subprocess.run(command, check=True)
 
-    info_json_files = [f for f in os.listdir(output_dir) if f.endswith('.info.json')]
-    if not info_json_files:
-        raise FileNotFoundError("Could not find info JSON file.")
-
-    for info_file in info_json_files:
-        with open(os.path.join(output_dir, info_file), 'r', encoding='utf-8') as f:
-            info = json.load(f)
-            title = info.get('title')
-            if title:
-                base = os.path.join(output_dir, title)
-                break
-    else:
-        raise FileNotFoundError("Could not parse title from info JSON.")
-
+    full_title = f"{artist} - {album} - {song_title}"
+    sanitized_title = sanitize_filename(full_title)
+    base = os.path.join(output_dir, sanitized_title)
+    
+    downloaded_mp3 = os.path.join(output_dir, "downloaded.mp3")
     mp3_path = base + ".mp3"
+    if os.path.exists(downloaded_mp3):
+        os.rename(downloaded_mp3, mp3_path)
+    
     thumb_path = None
     for ext in ['jpg', 'webp', 'png']:
-        candidate = base + f'.{ext}'
-        if os.path.exists(candidate):
-            thumb_path = candidate
+        downloaded_thumb = os.path.join(output_dir, f"downloaded.{ext}")
+        if os.path.exists(downloaded_thumb):
+            thumb_path = base + f'.{ext}'
+            os.rename(downloaded_thumb, thumb_path)
             break
 
     if not os.path.exists(mp3_path):
@@ -51,7 +78,7 @@ def download_audio_and_thumbnail(url, output_dir):
     if not thumb_path:
         raise FileNotFoundError("Missing thumbnail file.")
 
-    return mp3_path, thumb_path, title
+    return mp3_path, thumb_path
 
 def crop_thumbnail(thumbnail_path):
     img = Image.open(thumbnail_path)
@@ -101,8 +128,8 @@ def organize_files(song_title, artist_name, mp3_path, cover_path, all_mp3_dir, o
     shutil.move(mp3_path, unified_mp3_path)
 
     base_dir = os.path.dirname(__file__)
-    artist_folder = os.path.join(base_dir, "Artists", sanitize_filename(artist_name))
-    song_folder = os.path.join(artist_folder, sanitize_filename(song_title))
+    artist_folder = os.path.join(base_dir, "Artists", artist_name)
+    song_folder = os.path.join(artist_folder, song_title)
     os.makedirs(song_folder, exist_ok=True)
 
     cover_dest = os.path.join(song_folder, os.path.basename(cover_path))
@@ -130,7 +157,6 @@ def main():
         song_title = row['song_title'].strip()
         
         artist = row['artist_name'].strip()
-        
         if not artist:
             artist = "Unknown"
         if not album and not song_title:
@@ -141,8 +167,15 @@ def main():
         elif not song_title:
             song_title = album
 
+        # read optional time range from CSV: try 'time_range' first, then 'time'
+        time_range = ''
+        if 'time_range' in row:
+            time_range = row['time_range'].strip()
+        elif 'time' in row:
+            time_range = row['time'].strip()
+
         print(f"Processing: {url}")
-        mp3_path, thumbnail_path, _ = download_audio_and_thumbnail(url, output_dir)
+        mp3_path, thumbnail_path = download_audio_and_thumbnail(url, output_dir, artist, album, song_title, time_range if time_range else None)
         square_thumb = crop_thumbnail(thumbnail_path)
 
         add_tags(mp3_path, square_thumb, artist, song_title, album)
